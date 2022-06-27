@@ -12,6 +12,8 @@ from contextlib import AsyncExitStack
 import sys
 from pathlib import Path
 
+import subprocess
+
 class ClusterWorker:
     """
     Launches a worker on another machine
@@ -34,7 +36,8 @@ class ClusterWorker:
         worker_cmd = [f"{worker_exe}", f"{self.scheduler_address}"]
         #worker_cmd = [f"{worker_exe}", "--no-reconnect", "--death-timeout '30'", f"{self.scheduler_address}"]
         print(worker_cmd)
-        self.process = await asyncio.create_subprocess_exec(*worker_cmd)
+        #self.process = await asyncio.create_subprocess_exec(*worker_cmd)
+        self.process = subprocess.Popen(f"{worker_exe} {self.scheduler_address}",shell=True)
         print("RETURN CODE: "+ str(self.process.returncode))
         return self.process
 
@@ -54,71 +57,23 @@ async def f():
         s = Scheduler(dashboard=True)
         await stack.enter_async_context(s)  # Scheduler must be running before client or workers connect
         print(s.address)
-        
-        #s.address = "tcp://10.0.0.167:8786"
 
         # Start client
         client = Client(s.address, asynchronous=True)
-        #client_fut = stack.enter_async_context(client)
+        await stack.enter_async_context(client)
 
-        
-        # Start workers
-        n_workers = 5
-        child_procs = [await stack.enter_async_context(ClusterWorker(s.address)) for _i in range(n_workers)]
-        #child_procs = [await stack.enter_async_context(Worker(s.address)) for _i in range(n_workers)]
+        async with AsyncExitStack() as worker_stack:
 
-        #await client_fut
-        future = client.submit(lambda x: x + 1, 10)
-        result = await future
-        print("Computation finished!")
-        print(result)
+            # Start workers
+            n_workers = 5
+            child_procs = [await worker_stack.enter_async_context(ClusterWorker(s.address)) for _i in range(n_workers)]
+            #child_procs = [await stack.enter_async_context(Worker(s.address)) for _i in range(n_workers)]
 
-        """
-        workers = client.scheduler_info()['workers']
-        print("These are the workers")
-        print(workers)
-        print(type(workers))
-
-        print(client.dashboard_link)
-        
-        await asyncio.sleep(500)
-        result = await future
-        print("Computation finished!")
-        
-
-
-
-        #workers = list(client.scheduler_info()['workers'])
-        #print(workers)
-        #await client.run_on_scheduler(lambda dask_scheduler=None: 
-        #    dask_scheduler.retire_workers(workers, close_workers=True))
-
-        """
-
-        # Shuts down worker processes
-        
-        print("client.shutdown")
-        #await client.shutdown()
-        wmi = await s.get_worker_monitor_info()
-        print(wmi)
-
-        wtc = s.workers_to_close(n=n_workers,minimum=0)
-        print(wtc)
-        #for w in wtc:
-        #    await s.retire_workers(w)
-        #await s.retire_workers(s.workers)
-        #await s.close_workers()
-        #await client.close()
-        
-
-        print("Wait for subprocesses to end")
-        #[await cp.communicate() for cp in child_procs]
-        print("subprocesses should be done")
-
-        
-
-        
-
+            #await client_fut
+            future = client.submit(lambda x: x + 1, 10)
+            result = await future
+            print("Computation finished!")
+            print(result)
 
 
 
